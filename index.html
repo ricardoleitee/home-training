@@ -262,6 +262,19 @@ textarea.form-input{resize:vertical;min-height:80px;line-height:1.5}
 .emoji-opt.selected{border-color:var(--accent);background:var(--accent-bg)}
 .form-danger-btn{padding:12px;border-radius:var(--radius-sm);border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:14px;cursor:pointer;margin-top:8px}
 
+/* ═══ PROGRESSO CORPORAL ═══ */
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.chart-card+.chart-card{margin-top:12px}
+.chart-svg{width:100%;height:120px;display:block;margin-top:10px}
+.chart-empty{font-size:13px;color:var(--text3);text-align:center;padding:16px 0}
+.weight-delta{font-size:13px;color:var(--text2);margin-top:8px}
+.progress-save-btn{align-self:flex-end;white-space:nowrap}
+.entry-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.entry-row:last-child{border-bottom:none}
+.entry-date{font-size:13px;color:var(--text2);width:64px;flex-shrink:0}
+.entry-vals{font-size:13px;font-weight:600;flex:1;display:flex;gap:10px;flex-wrap:wrap;color:var(--text)}
+.entry-del{background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:4px 8px;flex-shrink:0}
+
 .safe-bottom{height:max(env(safe-area-inset-bottom,0px),12px)}
 </style>
 </head>
@@ -273,6 +286,7 @@ textarea.form-input{resize:vertical;min-height:80px;line-height:1.5}
       <div class="header-actions">
         <button class="icon-btn" onclick="openPlanEditor()" title="Editar plano">✏️</button>
         <button class="icon-btn" onclick="openHistory()" title="Histórico">📊</button>
+        <button class="icon-btn" onclick="openProgress()" title="Progresso corporal">⚖️</button>
         <button class="icon-btn" onclick="openSettings()" title="Definições">⚙️</button>
       </div>
     </div>
@@ -315,6 +329,15 @@ textarea.form-input{resize:vertical;min-height:80px;line-height:1.5}
     <div class="overlay-title">Histórico</div>
   </div>
   <div class="overlay-body" id="historyBody"></div>
+</div>
+
+<!-- PROGRESSO CORPORAL -->
+<div class="overlay" id="progressOverlay" style="display:none">
+  <div class="overlay-header">
+    <button class="overlay-back" onclick="closeOverlay('progressOverlay')">✕</button>
+    <div class="overlay-title">Progresso corporal</div>
+  </div>
+  <div class="overlay-body" id="progressBody"></div>
 </div>
 
 <!-- DEFINIÇÕES -->
@@ -554,6 +577,16 @@ function getDayData(wk,dayI){
 function saveDayData(wk,dayI,dd){ const all=loadAll(); if(!all[wk])all[wk]={}; all[wk][dayI]=dd; saveAll(all); }
 function loadSetting(k,def){ return loadJSON('s_'+k,def); }
 function saveSetting(k,v){ saveJSON('s_'+k,v); }
+
+// ── PESO E NUTRIÇÃO (v4) ──
+function getPeso(){ return loadJSON('peso_v4',{}); }
+function savePesoEntry(date,kg){ const d=getPeso(); d[date]=kg; saveJSON('peso_v4',d); }
+function deletePesoEntry(date){ const d=getPeso(); delete d[date]; saveJSON('peso_v4',d); }
+function getNutri(){ return loadJSON('nutri_v4',{}); }
+function saveNutriEntry(date,obj){ const d=getNutri(); d[date]=obj; saveJSON('nutri_v4',d); }
+function deleteNutriEntry(date){ const d=getNutri(); delete d[date]; saveJSON('nutri_v4',d); }
+function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function formatDatePT(iso){ const[y,m,d]=iso.split('-'); return`${d}/${m}`; }
 
 // ── DATAS ──
 function todayDayIndex(){ const d=new Date().getDay(); return d===0?6:d-1; }
@@ -1002,6 +1035,114 @@ function openHistory(){
   document.getElementById('historyOverlay').style.display='flex';
 }
 
+// ── PROGRESSO CORPORAL ──
+function buildWeightChartSVG(entries){
+  const w=300,h=120,pad=10;
+  const kgs=entries.map(e=>e.kg);
+  const min=Math.min(...kgs),max=Math.max(...kgs);
+  const range=(max-min)||1;
+  const stepX=entries.length>1?(w-2*pad)/(entries.length-1):0;
+  const pos=(e,i)=>{
+    const x=pad+i*stepX;
+    const y=pad+(h-2*pad)*(1-(e.kg-min)/range);
+    return[x,y];
+  };
+  const pts=entries.map((e,i)=>pos(e,i).map(v=>v.toFixed(1)).join(',')).join(' ');
+  const dots=entries.map((e,i)=>{const[x,y]=pos(e,i);return`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="var(--accent)"/>`;}).join('');
+  return`<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    ${dots}
+  </svg>`;
+}
+
+function openProgress(){
+  renderProgress();
+  document.getElementById('progressOverlay').style.display='flex';
+}
+
+function renderProgress(){
+  const peso=getPeso();
+  const nutri=getNutri();
+  const today=todayISO();
+
+  const chartEntries=Object.keys(peso).sort().slice(-20).map(dt=>({date:dt,kg:peso[dt]}));
+  let deltaHtml='';
+  if(chartEntries.length>=2){
+    const diff=chartEntries[chartEntries.length-1].kg-chartEntries[chartEntries.length-2].kg;
+    deltaHtml=`<div class="weight-delta">${diff>0?'+':''}${diff.toFixed(1)} kg desde o registo anterior</div>`;
+  }
+  const chartHtml=chartEntries.length>=2?buildWeightChartSVG(chartEntries):`<div class="chart-empty">Regista pelo menos 2 pesagens para veres o gráfico.</div>`;
+
+  const allDates=[...new Set([...Object.keys(peso),...Object.keys(nutri)])].sort().reverse().slice(0,14);
+  const entriesHtml=allDates.length?allDates.map(dt=>{
+    const w=peso[dt],n=nutri[dt];
+    const vals=[w?`${w} kg`:'',n?.kcal?`${n.kcal} kcal`:'',n?.protein?`${n.protein}g P`:''].filter(Boolean).join(' · ');
+    return`<div class="entry-row">
+      <div class="entry-date">${formatDatePT(dt)}</div>
+      <div class="entry-vals">${vals}</div>
+      <button class="entry-del" onclick="removeDayEntry('${dt}')">✕</button>
+    </div>`;
+  }).join(''):'<div class="history-empty">Ainda não tens registos.</div>';
+
+  document.getElementById('progressBody').innerHTML=`
+    <div class="chart-card">
+      <div class="section-label">Peso corporal</div>
+      <div class="form-row">
+        <div class="form-group">
+          <input class="form-input" id="fPeso" type="text" inputmode="decimal" placeholder="kg" value="${peso[today]||''}">
+        </div>
+        <button class="pill-btn primary progress-save-btn" onclick="submitPeso()">Registar hoje</button>
+      </div>
+      ${deltaHtml}
+      ${chartHtml}
+    </div>
+    <div class="chart-card">
+      <div class="section-label">Calorias e proteína — hoje</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Calorias</label>
+          <input class="form-input" id="fKcal" type="text" inputmode="numeric" pattern="[0-9]*" value="${nutri[today]?.kcal||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Proteína (g)</label>
+          <input class="form-input" id="fProtein" type="text" inputmode="numeric" pattern="[0-9]*" value="${nutri[today]?.protein||''}">
+        </div>
+      </div>
+      <button class="pill-btn primary" style="margin-top:10px;width:100%" onclick="submitNutri()">Guardar</button>
+    </div>
+    <div class="chart-card">
+      <div class="section-label">Histórico recente</div>
+      ${entriesHtml}
+    </div>
+  `;
+}
+
+function submitPeso(){
+  const raw=document.getElementById('fPeso').value.replace(',','.');
+  const val=parseFloat(raw);
+  if(isNaN(val)||val<=0||val>400){alert('Peso inválido.');return;}
+  savePesoEntry(todayISO(),val);
+  vibrate([30]);
+  renderProgress();
+}
+
+function submitNutri(){
+  const kcal=parseInt(document.getElementById('fKcal').value)||0;
+  const protein=parseInt(document.getElementById('fProtein').value)||0;
+  if(!kcal&&!protein){alert('Introduz pelo menos um valor.');return;}
+  saveNutriEntry(todayISO(),{kcal,protein});
+  vibrate([30]);
+  renderProgress();
+}
+
+function removeDayEntry(date){
+  if(confirm('Remover o registo deste dia?')){
+    deletePesoEntry(date);
+    deleteNutriEntry(date);
+    renderProgress();
+  }
+}
+
 // ── DEFINIÇÕES ──
 function openSettings(){
   const injury=loadSetting('injury',false);
@@ -1018,6 +1159,8 @@ function exportData(){
     plan:loadJSON('plan_v3',null),
     library:loadJSON('library_v3',null),
     history:loadAll(),
+    peso:getPeso(),
+    nutri:getNutri(),
     exported:new Date().toISOString()
   };
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
@@ -1038,6 +1181,8 @@ function handleImport(e){
         if(data.library)saveJSON('library_v3',data.library);
         if(data.history)saveAll(data.history);
         else if(!data.plan&&!data.library)saveAll(data); // backup v2 (só histórico)
+        if(data.peso)saveJSON('peso_v4',data.peso);
+        if(data.nutri)saveJSON('nutri_v4',data.nutri);
         refresh();alert('Dados importados!');
       }
     }catch{alert('Ficheiro inválido.');}
