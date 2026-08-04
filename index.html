@@ -585,6 +585,13 @@ function deletePesoEntry(date){ const d=getPeso(); delete d[date]; saveJSON('pes
 function getNutri(){ return loadJSON('nutri_v4',{}); }
 function saveNutriEntry(date,obj){ const d=getNutri(); d[date]=obj; saveJSON('nutri_v4',d); }
 function deleteNutriEntry(date){ const d=getNutri(); delete d[date]; saveJSON('nutri_v4',d); }
+function getPerfil(){ return loadJSON('perfil_v4',null); }
+function savePerfil(p){ saveJSON('perfil_v4',p); }
+function getLatestWeight(){
+  const peso=getPeso();
+  const dates=Object.keys(peso).sort();
+  return dates.length?peso[dates[dates.length-1]]:null;
+}
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function formatDatePT(iso){ const[y,m,d]=iso.split('-'); return`${d}/${m}`; }
 
@@ -1036,6 +1043,37 @@ function openHistory(){
 }
 
 // ── PROGRESSO CORPORAL ──
+const ACTIVITY_LEVELS=[
+  {v:'1.2',label:'Sedentário (pouco ou nenhum exercício)'},
+  {v:'1.375',label:'Leve (1-3x/semana)'},
+  {v:'1.55',label:'Moderado (3-5x/semana)'},
+  {v:'1.725',label:'Ativo (6-7x/semana)'},
+  {v:'1.9',label:'Muito ativo (treino intenso + trabalho físico)'}
+];
+const GOAL_OPTIONS=[
+  {v:'bulk',label:'Ganhar massa (+300 kcal)'},
+  {v:'recomp',label:'Recomposição / manter (0)'},
+  {v:'cut',label:'Perder gordura (-400 kcal)'}
+];
+
+function calcMeta(){
+  const p=getPerfil();
+  const w=getLatestWeight();
+  if(!p||!w)return null;
+  const bmr=p.sex==='f'?(10*w+6.25*p.heightCm-5*p.age-161):(10*w+6.25*p.heightCm-5*p.age+5);
+  const tdee=bmr*parseFloat(p.activity);
+  const adj=p.goal==='bulk'?300:(p.goal==='cut'?-400:0);
+  return{kcal:Math.round((tdee+adj)/10)*10,protein:Math.round(w*2)};
+}
+
+function progressBarHtml(label,val,target){
+  const pct=Math.min(100,Math.round((val/target)*100));
+  return`<div class="progress-wrap" style="margin-top:10px">
+    <div class="progress-meta"><span class="progress-label">${label}</span><span class="progress-pct">${val}/${target}</span></div>
+    <div class="progress-bar"><div class="progress-fill${pct>=100?' complete':''}" style="width:${pct}%"></div></div>
+  </div>`;
+}
+
 function buildWeightChartSVG(entries){
   const w=300,h=120,pad=10;
   const kgs=entries.map(e=>e.kg);
@@ -1064,6 +1102,8 @@ function renderProgress(){
   const peso=getPeso();
   const nutri=getNutri();
   const today=todayISO();
+  const perfil=getPerfil();
+  const meta=calcMeta();
 
   const chartEntries=Object.keys(peso).sort().slice(-20).map(dt=>({date:dt,kg:peso[dt]}));
   let deltaHtml='';
@@ -1097,6 +1137,40 @@ function renderProgress(){
       ${chartHtml}
     </div>
     <div class="chart-card">
+      <div class="section-label">Perfil e meta diária</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Altura (cm)</label>
+          <input class="form-input" id="fAltura" type="text" inputmode="numeric" pattern="[0-9]*" value="${perfil?.heightCm||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Idade</label>
+          <input class="form-input" id="fIdade" type="text" inputmode="numeric" pattern="[0-9]*" value="${perfil?.age||''}">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label class="form-label">Sexo (para a fórmula)</label>
+        <select class="form-select" id="fSexo">
+          <option value="m" ${perfil?.sex!=='f'?'selected':''}>Masculino</option>
+          <option value="f" ${perfil?.sex==='f'?'selected':''}>Feminino</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label class="form-label">Nível de atividade</label>
+        <select class="form-select" id="fAtividade">
+          ${ACTIVITY_LEVELS.map(a=>`<option value="${a.v}" ${perfil?.activity===a.v?'selected':''}>${a.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label class="form-label">Objetivo</label>
+        <select class="form-select" id="fObjetivo">
+          ${GOAL_OPTIONS.map(g=>`<option value="${g.v}" ${perfil?.goal===g.v?'selected':''}>${g.label}</option>`).join('')}
+        </select>
+      </div>
+      <button class="pill-btn primary" style="margin-top:10px;width:100%" onclick="submitPerfil()">Guardar perfil</button>
+      ${meta?`<div class="weight-delta">Meta sugerida: <strong>${meta.kcal} kcal</strong> · <strong>${meta.protein}g proteína</strong> — estimativa geral, não substitui aconselhamento profissional.</div>`:`<div class="chart-empty">Preenche o perfil e regista o teu peso para veres uma meta sugerida.</div>`}
+    </div>
+    <div class="chart-card">
       <div class="section-label">Calorias e proteína — hoje</div>
       <div class="form-row">
         <div class="form-group">
@@ -1109,6 +1183,7 @@ function renderProgress(){
         </div>
       </div>
       <button class="pill-btn primary" style="margin-top:10px;width:100%" onclick="submitNutri()">Guardar</button>
+      ${meta?`${progressBarHtml('Calorias',nutri[today]?.kcal||0,meta.kcal)}${progressBarHtml('Proteína',nutri[today]?.protein||0,meta.protein)}`:''}
     </div>
     <div class="chart-card">
       <div class="section-label">Histórico recente</div>
@@ -1131,6 +1206,21 @@ function submitNutri(){
   const protein=parseInt(document.getElementById('fProtein').value)||0;
   if(!kcal&&!protein){alert('Introduz pelo menos um valor.');return;}
   saveNutriEntry(todayISO(),{kcal,protein});
+  vibrate([30]);
+  renderProgress();
+}
+
+function submitPerfil(){
+  const heightCm=parseInt(document.getElementById('fAltura').value);
+  const age=parseInt(document.getElementById('fIdade').value);
+  if(!heightCm||heightCm<100||heightCm>250){alert('Altura inválida.');return;}
+  if(!age||age<10||age>100){alert('Idade inválida.');return;}
+  savePerfil({
+    heightCm,age,
+    sex:document.getElementById('fSexo').value,
+    activity:document.getElementById('fAtividade').value,
+    goal:document.getElementById('fObjetivo').value
+  });
   vibrate([30]);
   renderProgress();
 }
@@ -1161,6 +1251,7 @@ function exportData(){
     history:loadAll(),
     peso:getPeso(),
     nutri:getNutri(),
+    perfil:getPerfil(),
     exported:new Date().toISOString()
   };
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
@@ -1183,6 +1274,7 @@ function handleImport(e){
         else if(!data.plan&&!data.library)saveAll(data); // backup v2 (só histórico)
         if(data.peso)saveJSON('peso_v4',data.peso);
         if(data.nutri)saveJSON('nutri_v4',data.nutri);
+        if(data.perfil)saveJSON('perfil_v4',data.perfil);
         refresh();alert('Dados importados!');
       }
     }catch{alert('Ficheiro inválido.');}
