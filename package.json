@@ -6,7 +6,8 @@
   "scripts": {
     "test:section1": "node tests/run-section1.js",
     "test:section2": "node tests/run-section2.js",
-    "test:section4": "node tests/run-section4.js"
+    "test:section4": "node tests/run-section4.js",
+    "test:section5": "node tests/run-section5.js"
   },
   "devDependencies": {
     "playwright": "^1.47.0",

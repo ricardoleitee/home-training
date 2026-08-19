@@ -92,7 +92,11 @@ function extractAppScript() {
  * chamadas diretamente pelos testes sem rebentar — os stubs não simulam
  * layout, só evitam ReferenceError.
  */
-function loadApp() {
+// `opts.confirm`, quando passado, substitui o confirm() sempre-true por
+// omissão — usado pelo teste do critério 5.5 (dupla confirmação em
+// resetAllData) para contar quantas vezes confirm() é chamado e simular o
+// utilizador a aceitar/recusar cada uma das duas confirmações.
+function loadApp(opts = {}) {
   const script = extractAppScript();
   const fakeDocument = makeFakeDocument();
   const sandbox = {
@@ -100,7 +104,7 @@ function loadApp() {
     navigator: {},
     document: fakeDocument,
     window: { addEventListener() {}, scrollTo() {} },
-    confirm: () => true,
+    confirm: opts.confirm || (() => true),
     alert() {},
     console,
   };

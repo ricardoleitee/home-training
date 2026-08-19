@@ -551,8 +551,22 @@ const SEED_PLAN = {
 const EMOJI_OPTIONS=["💪","🔥","🏋️","🤸","🧗","🏃","🚴","🏊","⚡","🎯","🦵","🦶","🤚","👏","🔺","📐","🪑","⏱️","↔️","🏔️","🌉","🔄","🦸","🏗️","🎒","🦘","⬆️","🧘"];
 
 // ── STORAGE CORE ──
+// Critério 5.1: TODO o acesso a localStorage (leitura, escrita e limpeza)
+// passa por estas funções — loadJSON/saveJSON para chaves individuais,
+// clearAllStorage() para o "apagar tudo". Nenhum outro ponto do código chama
+// localStorage.getItem/setItem/clear diretamente.
 function loadJSON(k,def){ try{const v=localStorage.getItem(k);return v===null?def:JSON.parse(v);}catch{return def;} }
 function saveJSON(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch{} }
+function clearAllStorage(){ try{localStorage.clear();}catch{} }
+
+// Critério 5.3: escaping central para qualquer valor definido pelo utilizador
+// (nomes de exercícios, foco do dia, dicas, reps, etc.) antes de ir para
+// innerHTML — quer como texto, quer dentro de um atributo value="...".
+// Sem isto, um nome de exercício como <img src=x onerror=alert(1)> executava.
+function escapeHtml(str){
+  if(str===null||str===undefined)return'';
+  return String(str).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function getPlan(){
   let p=loadJSON('plan_v3',null);
@@ -750,7 +764,7 @@ function renderNav(){
     else if(!d.rest&&isDayComplete(wk,i))cls+=' complete';
     if(i===todayDayIndex()&&i!==activeDay)cls+=' today';
     return`<button class="${cls}" onclick="switchDay(${i})">
-      <span class="day-btn-label">${d.label}</span>
+      <span class="day-btn-label">${escapeHtml(d.label)}</span>
       <span class="day-btn-dot"></span>
     </button>`;
   }).join('');
@@ -783,9 +797,9 @@ function renderContent(){
 
   if(d.rest){
     html+=`<div class="rest-card">
-      <div class="rest-emoji">${d.restEmoji||'😴'}</div>
-      <div class="rest-title">${d.label} — ${d.focus}</div>
-      <div class="rest-desc">${d.restDesc||'Dia de descanso.'}</div>
+      <div class="rest-emoji">${escapeHtml(d.restEmoji||'😴')}</div>
+      <div class="rest-title">${escapeHtml(d.label)} — ${escapeHtml(d.focus)}</div>
+      <div class="rest-desc">${escapeHtml(d.restDesc||'Dia de descanso.')}</div>
     </div>`;
     document.getElementById('content').innerHTML=html;
     return;
@@ -807,7 +821,7 @@ function renderContent(){
 
   html+=`<div class="day-header">
     <div>
-      <div class="day-title">${d.label} — ${d.focus}</div>
+      <div class="day-title">${escapeHtml(d.label)} — ${escapeHtml(d.focus)}</div>
       <div class="day-subtitle">${exs.length} exercícios</div>
     </div>
     <button class="pill-btn primary" onclick="startTreinoMode()">▶ Iniciar</button>
@@ -835,13 +849,13 @@ function renderContent(){
       const reps=dd.sets[ex.id+'_'+i]||'';
       const sdone=dd.setsDone[ex.id+'_'+i]||false;
       const prev=getPrevWeekReps(activeDay,ex.id,i);
-      const prevHint=prev?`<span style="font-size:11px;color:var(--text3);margin-left:4px">S.ant: ${prev}</span>`:'';
+      const prevHint=prev?`<span style="font-size:11px;color:var(--text3);margin-left:4px">S.ant: ${escapeHtml(prev)}</span>`:'';
       setsHtml+=`<div class="set-row">
         <span class="set-num">${i+1}</span>
         <div class="set-field">
-          <input class="set-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="—" value="${reps}"
+          <input class="set-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="—" value="${escapeHtml(reps)}"
             onchange="saveRepsMain('${ex.id}',${i},this.value)">
-          <span class="set-unit">${ex.unit}${prevHint}</span>
+          <span class="set-unit">${escapeHtml(ex.unit)}${prevHint}</span>
         </div>
         <button class="set-done-btn${sdone?' done':''}" onclick="toggleSetMain('${ex.id}',${i})"></button>
       </div>`;
@@ -868,10 +882,10 @@ function renderContent(){
 
     html+=`<div class="ex-card${exDoneFlag?' ex-done':''}">
       <div class="ex-header" onclick="toggleExOpen('${ex.id}')">
-        <div class="ex-emoji">${ex.emoji}</div>
+        <div class="ex-emoji">${escapeHtml(ex.emoji)}</div>
         <div class="ex-info">
-          <div class="ex-name">${ex.name}</div>
-          <div class="ex-target">${ex.target}</div>
+          <div class="ex-name">${escapeHtml(ex.name)}</div>
+          <div class="ex-target">${escapeHtml(ex.target)}</div>
         </div>
         <div class="ex-right">
           <div class="ex-check${exDoneFlag?' done':''}"></div>
@@ -880,8 +894,8 @@ function renderContent(){
       </div>
       ${isOpen?`<div class="ex-body">
         <div class="section-label">Como fazer</div>
-        <div class="how-text">${ex.how||''}</div>
-        ${ex.tip?`<div class="tip-box"><div class="tip-text">💡 ${ex.tip}</div></div>`:''}
+        <div class="how-text">${escapeHtml(ex.how||'')}</div>
+        ${ex.tip?`<div class="tip-box"><div class="tip-text">💡 ${escapeHtml(ex.tip)}</div></div>`:''}
         ${suggestionHtml}
         ${progHtml}
         <div class="section-label">Séries</div>
@@ -986,18 +1000,18 @@ function renderTreinoMode(){
     setsHtml+=`<div class="treino-set-row">
       <div class="treino-set-num">${i+1}</div>
       <input class="treino-set-input" type="text" inputmode="numeric" pattern="[0-9]*"
-        placeholder="${prev||'—'}" value="${reps}"
+        placeholder="${escapeHtml(prev||'—')}" value="${escapeHtml(reps)}"
         onchange="saveRepsTreino('${ex.id}',${i},this.value)">
-      <div class="treino-set-unit">${ex.unit}</div>
+      <div class="treino-set-unit">${escapeHtml(ex.unit)}</div>
       <button class="treino-set-btn${sdone?' done':''}" onclick="toggleSetTreino('${ex.id}',${i})"></button>
     </div>`;
   }
 
   document.getElementById('treinoBody').innerHTML=`
     <div style="text-align:center">
-      <div style="font-size:40px;margin-bottom:8px">${ex.emoji}</div>
-      <div class="treino-ex-name">${ex.name}</div>
-      <div class="treino-ex-target">${ex.target}</div>
+      <div style="font-size:40px;margin-bottom:8px">${escapeHtml(ex.emoji)}</div>
+      <div class="treino-ex-name">${escapeHtml(ex.name)}</div>
+      <div class="treino-ex-target">${escapeHtml(ex.target)}</div>
     </div>
     <div class="treino-sets">${setsHtml}</div>
     <div class="treino-timer-big">
@@ -1010,7 +1024,7 @@ function renderTreinoMode(){
         <button class="timer-btn primary" onclick="startTreinoTimer()">▶ Iniciar</button>
       </div>
     </div>
-    ${ex.tip?`<div class="tip-box"><div class="tip-text">💡 ${ex.tip}</div></div>`:''}
+    ${ex.tip?`<div class="tip-box"><div class="tip-text">💡 ${escapeHtml(ex.tip)}</div></div>`:''}
   `;
 }
 function saveRepsTreino(exId,setI,val){
@@ -1103,7 +1117,7 @@ function openHistory(){
   const weeksData=getHistoryWeeksData(all,plan);
   const html=weeksData.map(({wk,sessions})=>{
     const sessionsHtml=sessions.map(s=>`<div class="history-session">
-        <div><div class="history-session-day">${s.label} — ${s.focus}</div></div>
+        <div><div class="history-session-day">${escapeHtml(s.label)} — ${escapeHtml(s.focus)}</div></div>
         <div class="history-session-stats">
           <div class="history-session-reps">${s.reps} reps</div>
           <div class="history-session-sets">${s.sets} séries</div>
@@ -1337,24 +1351,93 @@ function exportData(){
   a.href=url;a.download=`treino_backup_${new Date().toISOString().split('T')[0]}.json`;
   a.click();URL.revokeObjectURL(url);
 }
+/* ═══ VALIDAÇÃO DE SCHEMA DO IMPORT — critério 5.2 ═══
+   Antes o import só confiava no try/catch do JSON.parse: qualquer JSON com
+   sintaxe válida mas forma errada (ex.: {"plan":"asneira"}) sobrescrevia os
+   dados existentes e só rebentava mais tarde, a meio do uso da app. Estas
+   funções validam a FORMA mínima de cada secção do backup — puras, não
+   tocam no DOM nem em localStorage — e validateBackup() só devolve true se
+   tudo o que está presente no ficheiro tiver a forma esperada. Se devolver
+   false, handleImport() rejeita o ficheiro ANTES de qualquer saveJSON/saveAll,
+   por isso os dados existentes nunca chegam a ser tocados. */
+function isValidPlanDay(d){
+  return d&&typeof d==='object'&&!Array.isArray(d)&&
+    typeof d.label==='string'&&typeof d.focus==='string'&&typeof d.rest==='boolean'&&
+    (d.rest||Array.isArray(d.exerciseIds));
+}
+function isValidPlan(p){
+  return p&&typeof p==='object'&&Array.isArray(p.days)&&p.days.length>0&&p.days.every(isValidPlanDay);
+}
+function isValidLibraryExercise(ex){
+  return ex&&typeof ex==='object'&&!Array.isArray(ex)&&
+    typeof ex.id==='string'&&typeof ex.name==='string'&&typeof ex.emoji==='string'&&
+    typeof ex.unit==='string'&&typeof ex.sets==='number';
+}
+function isValidLibrary(lib){
+  return lib&&typeof lib==='object'&&!Array.isArray(lib)&&Object.values(lib).every(isValidLibraryExercise);
+}
+function isValidDayData(dd){
+  return dd&&typeof dd==='object'&&!Array.isArray(dd)&&
+    dd.sets&&typeof dd.sets==='object'&&
+    dd.setsDone&&typeof dd.setsDone==='object'&&
+    dd.exOpen&&typeof dd.exOpen==='object'&&
+    dd.exSetCount&&typeof dd.exSetCount==='object';
+}
+function isValidHistory(h){
+  if(!h||typeof h!=='object'||Array.isArray(h))return false;
+  return Object.values(h).every(week=>
+    week&&typeof week==='object'&&!Array.isArray(week)&&Object.values(week).every(isValidDayData)
+  );
+}
+function isValidPeso(p){
+  return p&&typeof p==='object'&&!Array.isArray(p)&&Object.values(p).every(v=>typeof v==='number');
+}
+function isValidNutri(n){
+  return n&&typeof n==='object'&&!Array.isArray(n)&&Object.values(n).every(v=>v&&typeof v==='object'&&!Array.isArray(v));
+}
+function isValidPerfil(p){
+  return p&&typeof p==='object'&&!Array.isArray(p)&&typeof p.heightCm==='number'&&typeof p.age==='number';
+}
+// Valida a forma inteira de um ficheiro de backup. Aceita tanto o formato
+// atual ({plan,library,history,peso,nutri,perfil}) como um backup antigo v2
+// (o próprio objeto é o treino_data, sem chaves plan/library/etc.).
+function validateBackup(data){
+  if(!data||typeof data!=='object'||Array.isArray(data))return false;
+  const KNOWN=['plan','library','history','peso','nutri','perfil','exported'];
+  const hasKnownKey=Object.keys(data).some(k=>KNOWN.includes(k));
+  if(!hasKnownKey)return isValidHistory(data); // backup v2: só histórico, sem wrapper
+  if(data.plan!=null&&!isValidPlan(data.plan))return false;
+  if(data.library!=null&&!isValidLibrary(data.library))return false;
+  if(data.history!=null&&!isValidHistory(data.history))return false;
+  if(data.peso!=null&&!isValidPeso(data.peso))return false;
+  if(data.nutri!=null&&!isValidNutri(data.nutri))return false;
+  if(data.perfil!=null&&!isValidPerfil(data.perfil))return false;
+  return true;
+}
+
 function handleImport(e){
   const file=e.target.files[0];
   if(!file)return;
   const reader=new FileReader();
   reader.onload=ev=>{
-    try{
-      const data=JSON.parse(ev.target.result);
-      if(confirm('Importar dados? Os dados atuais serão substituídos.')){
-        if(data.plan)saveJSON('plan_v3',data.plan);
-        if(data.library)saveJSON('library_v3',data.library);
-        if(data.history)saveAll(data.history);
-        else if(!data.plan&&!data.library)saveAll(data); // backup v2 (só histórico)
-        if(data.peso)saveJSON('peso_v4',data.peso);
-        if(data.nutri)saveJSON('nutri_v4',data.nutri);
-        if(data.perfil)saveJSON('perfil_v4',data.perfil);
-        refresh();alert('Dados importados!');
-      }
-    }catch{alert('Ficheiro inválido.');}
+    let data;
+    try{ data=JSON.parse(ev.target.result); }
+    catch{ alert('Ficheiro inválido: não é um JSON válido.'); e.target.value=''; return; }
+    if(!validateBackup(data)){
+      alert('Ficheiro inválido: a estrutura dos dados não corresponde a um backup desta app. Nada foi alterado.');
+      e.target.value='';
+      return;
+    }
+    if(confirm('Importar dados? Os dados atuais serão substituídos.')){
+      if(data.plan)saveJSON('plan_v3',data.plan);
+      if(data.library)saveJSON('library_v3',data.library);
+      if(data.history)saveAll(data.history);
+      else if(!data.plan&&!data.library)saveAll(data); // backup v2 (só histórico)
+      if(data.peso)saveJSON('peso_v4',data.peso);
+      if(data.nutri)saveJSON('nutri_v4',data.nutri);
+      if(data.perfil)saveJSON('perfil_v4',data.perfil);
+      refresh();alert('Dados importados!');
+    }
   };
   reader.readAsText(file);
   e.target.value='';
@@ -1368,7 +1451,7 @@ function restoreDefaultPlan(){
 function resetAllData(){
   if(confirm('Apagar TODOS os dados (plano, biblioteca, histórico)?')){
     if(confirm('Tens a certeza? Não pode ser desfeito.')){
-      localStorage.clear();closeOverlay('settingsOverlay');refresh();
+      clearAllStorage();closeOverlay('settingsOverlay');refresh();
     }
   }
 }
@@ -1391,8 +1474,8 @@ function renderPlanEditor(){
         const ex=getEx(exId);
         if(!ex)return'';
         return`<div class="edit-ex-item">
-          <div class="edit-ex-emoji">${ex.emoji}</div>
-          <div class="edit-ex-name">${ex.name}</div>
+          <div class="edit-ex-emoji">${escapeHtml(ex.emoji)}</div>
+          <div class="edit-ex-name">${escapeHtml(ex.name)}</div>
           <div class="edit-ex-sets">${ex.sets}×</div>
           <div class="edit-ex-actions">
             <button class="edit-ex-btn" onclick="moveEx(${dayI},${pos},-1)" ${pos===0?'disabled style="opacity:0.3"':''}>↑</button>
@@ -1408,16 +1491,16 @@ function renderPlanEditor(){
     let dupRowHtml='';
     if(dupPickerDay===dayI){
       dupRowHtml=`<div class="edit-dup-row">
-        <div class="edit-dup-label">Duplicar "${d.label} — ${d.focus}" para:</div>
+        <div class="edit-dup-label">Duplicar "${escapeHtml(d.label)} — ${escapeHtml(d.focus)}" para:</div>
         <div class="edit-dup-days">
-          ${plan.days.map((dd2,i2)=>i2===dayI?'':`<button class="pill-btn" onclick="confirmDuplicateDay(${dayI},${i2})">${dd2.label}</button>`).join('')}
+          ${plan.days.map((dd2,i2)=>i2===dayI?'':`<button class="pill-btn" onclick="confirmDuplicateDay(${dayI},${i2})">${escapeHtml(dd2.label)}</button>`).join('')}
         </div>
       </div>`;
     }
     return`<div class="edit-day-card">
       <div class="edit-day-header">
-        <div class="edit-day-label">${d.label}</div>
-        <input class="edit-day-focus-input" value="${d.focus}" onchange="updateDayFocus(${dayI},this.value)" ${d.rest?'placeholder="Descanso"':''}>
+        <div class="edit-day-label">${escapeHtml(d.label)}</div>
+        <input class="edit-day-focus-input" value="${escapeHtml(d.focus)}" onchange="updateDayFocus(${dayI},this.value)" ${d.rest?'placeholder="Descanso"':''}>
         <label class="edit-day-rest-toggle">
           <span class="edit-day-rest-box${d.rest?' checked':''}"></span>
           <input type="checkbox" ${d.rest?'checked':''} onchange="toggleDayRest(${dayI},this.checked)">
@@ -1512,10 +1595,10 @@ function renderLibrary(){
   const items=Object.values(lib).sort((a,b)=>a.name.localeCompare(b.name));
   body.innerHTML=items.map(ex=>`
     <div class="lib-item" onclick="${libTargetDay===null?`openExForm('${ex.id}')`:`addExToDay('${ex.id}')`}">
-      <div class="lib-emoji">${ex.emoji}</div>
+      <div class="lib-emoji">${escapeHtml(ex.emoji)}</div>
       <div class="lib-info">
-        <div class="lib-name">${ex.name}</div>
-        <div class="lib-detail">${ex.target} · ${ex.unit}${ex.leg?' · pernas':''}</div>
+        <div class="lib-name">${escapeHtml(ex.name)}</div>
+        <div class="lib-detail">${escapeHtml(ex.target)} · ${escapeHtml(ex.unit)}${ex.leg?' · pernas':''}</div>
       </div>
       ${ex.custom?'<div class="lib-badge custom">Meu</div>':''}
       <div class="settings-item-arrow">${libTargetDay===null?'✎':'+'}</div>
