@@ -673,6 +673,26 @@ function getSetsDoneCount(wk,dayI){
   });
   return{total,done};
 }
+// Soma as reps/segundos de UM exercício numa semana concreta, usando o número
+// de séries realmente registado NESSA semana (nunca o de outra semana) — é
+// isto que garante que a comparação "vs. semana anterior" soma cada semana
+// pelas suas próprias séries, mesmo que o nº de séries tenha mudado entretanto.
+function getWeekExerciseTotal(wk,dayI,exId,defaultSets){
+  const dd=getDayData(wk,dayI);
+  const sc=dd.exSetCount[exId]||defaultSets;
+  let t=0;
+  for(let i=0;i<sc;i++){
+    const n=parseInt(dd.sets[exId+'_'+i]);
+    if(!isNaN(n))t+=n;
+  }
+  return t;
+}
+// Comparação pura e testável "semana atual vs. semana anterior" para um exercício.
+function calcVsPrevWeek(dayI,exId,defaultSets){
+  const currTotal=getWeekExerciseTotal(getWeekKey(),dayI,exId,defaultSets);
+  const prevTotal=getWeekExerciseTotal(getPrevWeekKey(),dayI,exId,defaultSets);
+  return{currTotal,prevTotal,diff:currTotal-prevTotal};
+}
 function vibrate(p){if('vibrate'in navigator)navigator.vibrate(p);}
 
 // ── RENDER PRINCIPAL ──
@@ -783,11 +803,10 @@ function renderContent(){
       </div>`;
     }
 
-    const prevTotal=Array.from({length:sc},(_,i)=>parseInt(getPrevWeekReps(activeDay,ex.id,i))||0).reduce((a,b)=>a+b,0);
-    const currTotal=Array.from({length:sc},(_,i)=>parseInt(dd.sets[ex.id+'_'+i])||0).reduce((a,b)=>a+b,0);
+    const{currTotal,prevTotal,diff}=calcVsPrevWeek(activeDay,ex.id,ex.sets);
     let progHtml='';
     if(prevTotal>0&&currTotal>prevTotal){
-      progHtml=`<div class="prog-box">📈<div class="prog-text">Subiste <strong>+${currTotal-prevTotal} ${ex.unit}</strong> vs semana passada!</div></div>`;
+      progHtml=`<div class="prog-box">📈<div class="prog-text">Subiste <strong>+${diff} ${ex.unit}</strong> vs semana passada!</div></div>`;
     }else if(prevTotal>0){
       progHtml=`<div class="prog-box">🎯<div class="prog-text">Semana passada: <strong>${prevTotal} ${ex.unit}</strong> total. Tenta superar!</div></div>`;
     }
@@ -1009,35 +1028,46 @@ function closeConclusao(){document.getElementById('conclusionOverlay').style.dis
 function closeOverlay(id){document.getElementById(id).style.display='none';}
 
 // ── HISTÓRICO ──
+// Constrói a lista de semanas com treinos registados a partir dos dados brutos
+// (treino_data + plano) — SEM limite arbitrário, mostra TODAS as semanas com
+// pelo menos 1 série feita. Pura e testável (não toca no DOM nem localStorage).
+function getHistoryWeeksData(all,plan){
+  const weeks=Object.keys(all).sort().reverse();
+  const result=[];
+  weeks.forEach(wk=>{
+    const sessions=Object.keys(all[wk]).map(dayI=>{
+      const d=plan.days[parseInt(dayI)];
+      if(!d||d.rest)return null;
+      const dd=all[wk][dayI];
+      let reps=0;Object.values(dd.sets||{}).forEach(v=>{const n=parseInt(v);if(!isNaN(n))reps+=n;});
+      const sets=Object.values(dd.setsDone||{}).filter(Boolean).length;
+      if(!sets)return null;
+      return{dayI:parseInt(dayI),label:d.label,focus:d.focus,reps,sets};
+    }).filter(Boolean);
+    if(!sessions.length)return;
+    result.push({wk,sessions});
+  });
+  return result;
+}
 function openHistory(){
   const all=loadAll();
   const plan=getPlan();
   const body=document.getElementById('historyBody');
-  const weeks=Object.keys(all).sort().reverse();
-  let html='';
-  weeks.forEach(wk=>{
-    const sessions=Object.keys(all[wk]).map(dayI=>{
-      const d=plan.days[parseInt(dayI)];
-      if(!d||d.rest)return'';
-      const dd=all[wk][dayI];
-      let reps=0;Object.values(dd.sets||{}).forEach(v=>{const n=parseInt(v);if(!isNaN(n))reps+=n;});
-      const sets=Object.values(dd.setsDone||{}).filter(Boolean).length;
-      if(!sets)return'';
-      return`<div class="history-session">
-        <div><div class="history-session-day">${d.label} — ${d.focus}</div></div>
+  const weeksData=getHistoryWeeksData(all,plan);
+  const html=weeksData.map(({wk,sessions})=>{
+    const sessionsHtml=sessions.map(s=>`<div class="history-session">
+        <div><div class="history-session-day">${s.label} — ${s.focus}</div></div>
         <div class="history-session-stats">
-          <div class="history-session-reps">${reps} reps</div>
-          <div class="history-session-sets">${sets} séries</div>
+          <div class="history-session-reps">${s.reps} reps</div>
+          <div class="history-session-sets">${s.sets} séries</div>
         </div>
-      </div>`;
-    }).filter(Boolean).join('');
-    if(!sessions)return;
+      </div>`).join('');
     const p=wk.replace('w_','').split('_');
-    html+=`<div class="history-week">
+    return`<div class="history-week">
       <div class="history-week-header"><div class="history-week-label">Semana de ${p[2]}/${p[1]}/${p[0]}</div></div>
-      ${sessions}
+      ${sessionsHtml}
     </div>`;
-  });
+  }).join('');
   body.innerHTML=html||'<div class="history-empty">Ainda não tens treinos registados.</div>';
   document.getElementById('historyOverlay').style.display='flex';
 }

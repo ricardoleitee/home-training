@@ -1,0 +1,73 @@
+'use strict';
+/*
+ * Carrega as funções puras definidas no <script> do index.html para dentro
+ * de um sandbox Node isolado (via vm), sem precisar de DOM nem de tocar no
+ * localStorage real da máquina.
+ *
+ * Como funciona: o <script> do index.html é um único bloco. A partir do
+ * comentário "// ── INIT ──" até ao fim, o código mexe diretamente no DOM
+ * (document.getElementById(...).innerHTML=...) e regista o service worker —
+ * isso só faz sentido dentro de um browser. Tudo o que vem ANTES desse
+ * marcador é só definição de constantes/funções (nada é executado
+ * imediatamente que precise de document/window), por isso é seguro avaliar
+ * só essa parte aqui.
+ *
+ * localStorage é substituído por um stub em memória, para os testes correrem
+ * isolados uns dos outros e sem deixar rasto no disco.
+ */
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const INDEX_HTML_PATH = path.join(__dirname, '..', '..', 'index.html');
+const INIT_MARKER = '// ── INIT ──';
+
+function makeMemoryLocalStorage() {
+  const store = new Map();
+  return {
+    getItem(k) { return store.has(k) ? store.get(k) : null; },
+    setItem(k, v) { store.set(k, String(v)); },
+    removeItem(k) { store.delete(k); },
+    clear() { store.clear(); },
+    get length() { return store.size; },
+  };
+}
+
+function extractAppScript() {
+  const html = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
+  const match = html.match(/<script>([\s\S]*?)<\/script>/);
+  if (!match) {
+    throw new Error('load-app: não encontrei nenhum <script> em index.html');
+  }
+  const full = match[1];
+  const initIdx = full.indexOf(INIT_MARKER);
+  if (initIdx === -1) {
+    throw new Error(
+      `load-app: não encontrei o marcador "${INIT_MARKER}" em index.html — ` +
+      'sem ele não há forma segura de avaliar o script sem DOM. Se o comentário ' +
+      'de INIT foi renomeado, atualiza INIT_MARKER neste ficheiro.'
+    );
+  }
+  return full.slice(0, initIdx);
+}
+
+/**
+ * Devolve um sandbox novo com todas as funções/constantes de topo do
+ * index.html (getPlan, getWeekKey, calcVsPrevWeek, getHistoryWeeksData, ...)
+ * acessíveis como propriedades do objeto devolvido, com localStorage próprio
+ * e vazio (já seedado de SEED_PLAN/SEED_LIBRARY na primeira leitura, tal como
+ * na app real).
+ */
+function loadApp() {
+  const script = extractAppScript();
+  const sandbox = {
+    localStorage: makeMemoryLocalStorage(),
+    navigator: {},
+    console,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox, { filename: 'index.html (script, sem secção INIT)' });
+  return sandbox;
+}
+
+module.exports = { loadApp, makeMemoryLocalStorage };
