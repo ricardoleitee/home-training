@@ -4,13 +4,19 @@
   "version": "1.0.0",
   "description": "PWA pessoal de calistenia — testes de qualidade (docs/quality-criteria.md)",
   "scripts": {
+    "postinstall": "playwright install chromium",
+    "test": "npm run test:unit && npm run test:section1 && npm run test:section2 && npm run test:section4 && npm run test:section5 && npm run test:e2e",
+    "test:unit": "vitest run --coverage",
     "test:section1": "node tests/run-section1.js",
     "test:section2": "node tests/run-section2.js",
     "test:section4": "node tests/run-section4.js",
-    "test:section5": "node tests/run-section5.js"
+    "test:section5": "node tests/run-section5.js",
+    "test:e2e": "node tests/persist-progress.e2e.test.js"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.11",
+    "lighthouse": "^12.2.1",
     "playwright": "^1.47.0",
-    "lighthouse": "^12.2.1"
+    "vitest": "^4.1.11"
   }
 }

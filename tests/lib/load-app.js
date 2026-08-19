@@ -20,6 +20,7 @@ const path = require('path');
 const vm = require('vm');
 
 const INDEX_HTML_PATH = path.join(__dirname, '..', '..', 'index.html');
+const LOGIC_JS_PATH = path.join(__dirname, '..', '..', 'logic.js');
 const INIT_MARKER = '// ── INIT ──';
 
 function makeMemoryLocalStorage() {
@@ -118,6 +119,17 @@ function loadApp(opts = {}) {
     console,
   };
   vm.createContext(sandbox);
+  // Critério 7.2: as funções puras (SEED_*, storage core, cálculos,
+  // validação de backup) vivem agora em logic.js — carregado pelo
+  // index.html real com <script src="logic.js"> ANTES do <script> inline.
+  // Aqui reproduzimos a mesma ordem no sandbox `vm`, para que getPlan(),
+  // calcVsPrevWeek(), validateBackup(), etc. continuem disponíveis em
+  // `sandbox` para os testes das outras secções tal como antes da extração.
+  // logic.js também expõe `module.exports` quando corrido em Node — aqui
+  // `module` não existe no sandbox, por isso esse bloco é ignorado e só as
+  // declarações de função/const de topo ficam como globais do sandbox.
+  const logicScript = fs.readFileSync(LOGIC_JS_PATH, 'utf8');
+  vm.runInContext(logicScript, sandbox, { filename: 'logic.js' });
   vm.runInContext(script, sandbox, { filename: 'index.html (script, sem secção INIT)' });
   return sandbox;
 }

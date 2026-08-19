@@ -1,0 +1,37 @@
+name: Testes
+
+# Critério 7.4 (docs/quality-criteria.md): "Os testes correm automaticamente
+# em CI (GitHub Actions) a cada push, com o resultado visível (badge ou log
+# da Action)." — corre a cada push e a cada pull request; o resultado fica
+# visível no log desta run e no ✓/✗ que o GitHub mostra junto ao commit/PR.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: npm test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # O `postinstall` do package.json já corre `playwright install chromium`
+      # durante o `npm ci` acima (critério 7.1: funciona sem passo manual,
+      # também num clone local). Este passo extra só acrescenta as bibliotecas
+      # de sistema Linux (--with-deps) que o runner Ubuntu não tem por
+      # omissão — sem ele o Chromium descarrega mas falha a abrir headless.
+      - name: Instalar dependências de sistema do Chromium (Linux)
+        run: npx playwright install --with-deps chromium
+
+      # Critério 7.1: um único comando corre a suite inteira — unitários
+      # (Vitest + cobertura, critério 7.2), secções 1/2/4/5 e o e2e (7.3).
+      - name: Correr a suite de testes
+        run: npm test

@@ -1,6 +1,7 @@
-const CACHE = 'treino-v4-11';
+const CACHE = 'treino-v4-12';
 const FILES = [
   './index.html',
+  './logic.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
