@@ -1611,6 +1611,15 @@ refresh();
 
 if('serviceWorker'in navigator){
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});
+  // Garante que uma nova versão do SW (que já faz skipWaiting+clients.claim em sw.js)
+  // é adotada em no máximo 1 reload: assim que o novo SW assume o controlo da página,
+  // recarrega uma única vez para servir o conteúdo atualizado.
+  let swRefreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(swRefreshing)return;
+    swRefreshing=true;
+    location.reload();
+  });
 }
 </script>
 </body>
