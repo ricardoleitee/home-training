@@ -237,6 +237,9 @@ input,select,textarea{font-family:inherit}
 .edit-add-row{padding:12px 16px;border-top:1px solid var(--border)}
 .edit-add-btn{width:100%;padding:10px;border-radius:var(--radius-sm);border:1px dashed var(--border);background:transparent;color:var(--accent);font-size:13px;cursor:pointer}
 .edit-rest-note{padding:16px;font-size:13px;color:var(--text3);text-align:center;border-top:1px solid var(--border)}
+.edit-dup-row{padding:12px 16px;border-top:1px solid var(--border);background:var(--surface2)}
+.edit-dup-label{font-size:12px;color:var(--text2);margin-bottom:8px}
+.edit-dup-days{display:flex;flex-wrap:wrap;gap:6px}
 
 /* BIBLIOTECA */
 .lib-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer}
@@ -618,6 +621,24 @@ function getPrevWeekKey(){
   return `w_${monday.getFullYear()}_${String(monday.getMonth()+1).padStart(2,'0')}_${String(monday.getDate()).padStart(2,'0')}`;
 }
 
+/* ═══ CICLO DE TREINO — critério 2.3 (docs/quality-criteria.md), decisão
+   registada explicitamente, NÃO esquecida ═══
+   Não foi implementado nesta versão um ciclo de N dias configurável como
+   alternativa ao ciclo fixo Seg–Dom.
+   Justificação: getWeekKey()/getPrevWeekKey() ancoram a "semana" ao
+   calendário real (chave 'w_AAAA_MM_DD' da segunda-feira dessa semana), e é
+   nessa âncora que assentam: todo o treino_data já gravado pelos
+   utilizadores atuais, a comparação "vs. semana anterior" (critério 1.5,
+   calcVsPrevWeek/getWeekExerciseTotal) e o histórico que mostra todas as
+   semanas (critério 1.3, getHistoryWeeksData + tests/history-shows-all-
+   weeks.test.js). Substituir isto por um ciclo rotativo de N dias exigiria:
+   (a) migrar as chaves de semana já guardadas no localStorage de quem já
+   usa a app, (b) redefinir o que é "período anterior" quando o ciclo não
+   coincide com semanas de calendário, e (c) alterar lógica validada pelas
+   secções 1 e 5, fora do âmbito da secção 2 desta ronda de trabalho. Fica
+   sinalizado aqui como funcionalidade própria a fazer com plano de migração
+   de dados, não como omissão. */
+
 // ── LÓGICA ──
 let activeDay=todayDayIndex();
 let treinoExIdx=0;
@@ -692,6 +713,27 @@ function calcVsPrevWeek(dayI,exId,defaultSets){
   const currTotal=getWeekExerciseTotal(getWeekKey(),dayI,exId,defaultSets);
   const prevTotal=getWeekExerciseTotal(getPrevWeekKey(),dayI,exId,defaultSets);
   return{currTotal,prevTotal,diff:currTotal-prevTotal};
+}
+// Critério 2.2: sugestão de progressão CONCRETA (ex.: "última semana 3×15,
+// tenta 3×16") para exercícios de unidade 'reps' — só faz sentido em reps,
+// não em segundos (uma prancha não se mede em "reps a mais"). Usa a média
+// (arredondada) das reps válidas de cada série da semana anterior e sugere
+// manter o mesmo nº de séries com +1 rep de média. Devolve null quando não
+// há dados da semana anterior. Pura e testável — só lê localStorage via
+// getDayData, nunca escreve nem toca no DOM.
+function getProgressionSuggestion(dayI,exId,ex){
+  if(ex.unit!=='reps')return null;
+  const prevDD=getDayData(getPrevWeekKey(),dayI);
+  const sc=prevDD.exSetCount[exId]||ex.sets;
+  const vals=[];
+  for(let i=0;i<sc;i++){
+    const n=parseInt(prevDD.sets[exId+'_'+i]);
+    if(!isNaN(n))vals.push(n);
+  }
+  if(!vals.length)return null;
+  const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  if(avg<=0)return null;
+  return{sets:sc,lastReps:avg,nextReps:avg+1};
 }
 function vibrate(p){if('vibrate'in navigator)navigator.vibrate(p);}
 
@@ -810,6 +852,8 @@ function renderContent(){
     }else if(prevTotal>0){
       progHtml=`<div class="prog-box">🎯<div class="prog-text">Semana passada: <strong>${prevTotal} ${ex.unit}</strong> total. Tenta superar!</div></div>`;
     }
+    const suggestion=getProgressionSuggestion(activeDay,ex.id,ex);
+    const suggestionHtml=suggestion?`<div class="prog-box">📊<div class="prog-text">Última semana ${suggestion.sets}×${suggestion.lastReps}, tenta <strong>${suggestion.sets}×${suggestion.nextReps}</strong>.</div></div>`:'';
 
     const timerHtml=isOpen?`<div class="rest-timer">
       <div><div class="rest-timer-label">⏱ Descanso</div><div class="rest-timer-count" id="timerCount_${ex.id}">1:30</div></div>
@@ -836,6 +880,7 @@ function renderContent(){
         <div class="section-label">Como fazer</div>
         <div class="how-text">${ex.how||''}</div>
         ${ex.tip?`<div class="tip-box"><div class="tip-text">💡 ${ex.tip}</div></div>`:''}
+        ${suggestionHtml}
         ${progHtml}
         <div class="section-label">Séries</div>
         <div class="sets-list">${setsHtml}</div>
@@ -1358,6 +1403,15 @@ function renderPlanEditor(){
         <button class="edit-add-btn" onclick="openLibrary(${dayI})">+ Adicionar exercício</button>
       </div></div>`;
     }
+    let dupRowHtml='';
+    if(dupPickerDay===dayI){
+      dupRowHtml=`<div class="edit-dup-row">
+        <div class="edit-dup-label">Duplicar "${d.label} — ${d.focus}" para:</div>
+        <div class="edit-dup-days">
+          ${plan.days.map((dd2,i2)=>i2===dayI?'':`<button class="pill-btn" onclick="confirmDuplicateDay(${dayI},${i2})">${dd2.label}</button>`).join('')}
+        </div>
+      </div>`;
+    }
     return`<div class="edit-day-card">
       <div class="edit-day-header">
         <div class="edit-day-label">${d.label}</div>
@@ -1366,10 +1420,46 @@ function renderPlanEditor(){
           <input type="checkbox" ${d.rest?'checked':''} onchange="toggleDayRest(${dayI},this.checked)">
           Descanso
         </label>
+        <button class="edit-ex-btn${dupPickerDay===dayI?' danger':''}" onclick="toggleDupPicker(${dayI})" title="Duplicar este dia inteiro para outro dia">⧉</button>
       </div>
+      ${dupRowHtml}
       ${exListHtml}
     </div>`;
   }).join('');
+}
+
+/* ═══ DUPLICAR DIA (critério 2.1) ═══
+   Duplica um dia de treino inteiro (foco, estado de descanso e a lista
+   completa de exercícios, pela mesma ordem) para outro dia do plano, sem
+   ser preciso recriar exercício a exercício. Só mexe em plan_v3 — nunca em
+   treino_data, por isso o histórico já registado no dia de destino (e no de
+   origem) fica sempre intacto (ver também critério 2.4). */
+let dupPickerDay=null;
+function toggleDupPicker(dayI){
+  dupPickerDay=(dupPickerDay===dayI)?null:dayI;
+  renderPlanEditor();
+}
+function duplicateDayTo(sourceDayI,targetDayI){
+  if(sourceDayI===targetDayI)return;
+  const plan=getPlan();
+  const src=plan.days[sourceDayI];
+  const tgt=plan.days[targetDayI];
+  tgt.focus=src.focus;
+  tgt.rest=src.rest;
+  tgt.restEmoji=src.restEmoji;
+  tgt.restDesc=src.restDesc;
+  tgt.exerciseIds=[...src.exerciseIds];
+  savePlan(plan);
+}
+function confirmDuplicateDay(sourceDayI,targetDayI){
+  const plan=getPlan();
+  const src=plan.days[sourceDayI],tgt=plan.days[targetDayI];
+  if(confirm(`Substituir o conteúdo de "${tgt.label}" (${tgt.focus}) pelo de "${src.label}" (${src.focus})?\nO histórico já registado em qualquer um dos dois dias mantém-se.`)){
+    duplicateDayTo(sourceDayI,targetDayI);
+    dupPickerDay=null;
+    vibrate([30]);
+    renderPlanEditor();
+  }
 }
 
 function updateDayFocus(dayI,val){

@@ -33,6 +33,36 @@ function makeMemoryLocalStorage() {
   };
 }
 
+// Stub mínimo de DOM: o suficiente para correr, sem browser, funções da app
+// que escrevem em document.getElementById(id).innerHTML/.style/.value (ex.:
+// renderPlanEditor, openLibrary, closeOverlay) sem que rebentem com
+// "document is not defined". Não simula layout nem eventos — só guarda o
+// que lá é escrito, para os testes poderem chamar as funções reais da app
+// (não uma reimplementação da lógica) e confirmar efeitos noutro sítio
+// (ex.: localStorage/treino_data).
+function makeFakeElement() {
+  return {
+    innerHTML: '', textContent: '', value: '',
+    style: {}, classList: { add() {}, remove() {}, contains() { return false; } },
+    dataset: {},
+    addEventListener() {}, removeEventListener() {},
+    appendChild() {}, click() {},
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+  };
+}
+function makeFakeDocument() {
+  const elements = new Map();
+  return {
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, makeFakeElement());
+      return elements.get(id);
+    },
+    createElement() { return makeFakeElement(); },
+    addEventListener() {},
+  };
+}
+
 function extractAppScript() {
   const html = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
   const match = html.match(/<script>([\s\S]*?)<\/script>/);
@@ -53,16 +83,25 @@ function extractAppScript() {
 
 /**
  * Devolve um sandbox novo com todas as funções/constantes de topo do
- * index.html (getPlan, getWeekKey, calcVsPrevWeek, getHistoryWeeksData, ...)
- * acessíveis como propriedades do objeto devolvido, com localStorage próprio
- * e vazio (já seedado de SEED_PLAN/SEED_LIBRARY na primeira leitura, tal como
- * na app real).
+ * index.html (getPlan, getWeekKey, calcVsPrevWeek, getHistoryWeeksData,
+ * moveEx, addExToDay, removeExFromDay, duplicateDayTo, ...) acessíveis como
+ * propriedades do objeto devolvido, com localStorage próprio e vazio (já
+ * seedado de SEED_PLAN/SEED_LIBRARY na primeira leitura, tal como na app
+ * real). Inclui stubs de document/window/confirm/alert para que funções que
+ * também tocam no DOM (ex.: renderPlanEditor, openLibrary) possam ser
+ * chamadas diretamente pelos testes sem rebentar — os stubs não simulam
+ * layout, só evitam ReferenceError.
  */
 function loadApp() {
   const script = extractAppScript();
+  const fakeDocument = makeFakeDocument();
   const sandbox = {
     localStorage: makeMemoryLocalStorage(),
     navigator: {},
+    document: fakeDocument,
+    window: { addEventListener() {}, scrollTo() {} },
+    confirm: () => true,
+    alert() {},
     console,
   };
   vm.createContext(sandbox);

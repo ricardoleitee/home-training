@@ -1,4 +1,4 @@
-const CACHE = 'treino-v4-5';
+const CACHE = 'treino-v4-6';
 const FILES = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
