@@ -41,6 +41,7 @@ function makeMemoryLocalStorage() {
 // (não uma reimplementação da lógica) e confirmar efeitos noutro sítio
 // (ex.: localStorage/treino_data).
 function makeFakeElement() {
+  const attrs = new Map();
   return {
     innerHTML: '', textContent: '', value: '',
     style: {}, classList: { add() {}, remove() {}, contains() { return false; } },
@@ -49,6 +50,14 @@ function makeFakeElement() {
     appendChild() {}, click() {},
     querySelector() { return null; },
     querySelectorAll() { return []; },
+    // setAttribute/getAttribute/removeAttribute: usados por updateInertState()
+    // (critério 6.3) para marcar #app e overlays tapados como inert. Stub
+    // simples em memória — suficiente para as funções da app correrem sem
+    // "setAttribute is not a function", sem simular reflexão DOM real.
+    setAttribute(name, val) { attrs.set(name, String(val)); },
+    getAttribute(name) { return attrs.has(name) ? attrs.get(name) : null; },
+    removeAttribute(name) { attrs.delete(name); },
+    hasAttribute(name) { return attrs.has(name); },
   };
 }
 function makeFakeDocument() {

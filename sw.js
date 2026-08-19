@@ -1,4 +1,4 @@
-const CACHE = 'treino-v4-9';
+const CACHE = 'treino-v4-11';
 const FILES = [
   './index.html',
   './manifest.json',
